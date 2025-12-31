@@ -1,0 +1,41 @@
+{
+  "threads": [
+    {
+      "threadId": "claude-project-launcher-2025-12-31-feature-expansion",
+      "date": "2025-12-31",
+      "title": "Feature Expansion & Bug Fixes",
+      "context": "Adding services tab, editable notes/focus, progress tracking, and fixing Tauri 2 invoke issues",
+      "summary": "Added comprehensive project management features including Services tab with start/stop controls, editable notes and focus fields, progress/burndown tracking visualization, and project editor for status/progress. Fixed critical Tauri 2 bug where invoke commands weren't reaching Rust due to camelCase/snake_case parameter mismatch.",
+      "outcome": "success",
+      "tasksCompleted": [
+        "Added Services tab with running status indicators",
+        "Implemented Start All / Stop All service controls",
+        "Made project notes editable with save to project.json",
+        "Made current focus editable",
+        "Added Recent Sessions display from threads.json",
+        "Created ProgressChart component with burndown tracking",
+        "Added ProjectEditor for status and progress editing",
+        "Added Goals section display",
+        "Fixed Tauri 2 invoke parameter naming (camelCase vs snake_case)",
+        "Added #[tauri::command(rename_all = \"camelCase\")] to Rust commands"
+      ],
+      "tasksCreated": [
+        "Add comprehensive testing",
+        "Consider adding project creation/deletion",
+        "Add port configuration editing"
+      ],
+      "filesModified": [
+        "src/App.tsx",
+        "src/components/Services/Services.tsx",
+        "src/components/Projects/ProjectDetail.tsx",
+        "src/components/Projects/ProjectEditor.tsx",
+        "src/components/Projects/ProgressChart.tsx",
+        "src/stores/projectStore.ts",
+        "src/types/index.ts",
+        "src-tauri/src/lib.rs"
+      ],
+      "createdAt": "2025-12-31T08:00:00Z",
+      "updatedAt": "2025-12-31T21:40:00Z"
+    }
+  ]
+}
