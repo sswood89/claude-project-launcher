@@ -12,8 +12,11 @@ import {
   AlertCircle,
   Upload,
   RefreshCw,
+  MessageSquare,
+  Calendar,
+  ListChecks,
 } from 'lucide-react';
-import type { ClaudeProject, CodeStats, GitStats, Screenshot, SessionAnalytics } from '../../types';
+import type { ClaudeProject, CodeStats, GitStats, Screenshot, SessionAnalytics, Thread } from '../../types';
 import { useProjectStore } from '../../stores/projectStore';
 import toast from 'react-hot-toast';
 
@@ -22,28 +25,31 @@ interface AnalyticsProps {
 }
 
 export function Analytics({ project }: AnalyticsProps) {
-  const { getCodeStats, getGitStats, getScreenshots, getSessionAnalytics } = useProjectStore();
+  const { getCodeStats, getGitStats, getScreenshots, getSessionAnalytics, getThreads } = useProjectStore();
 
   const [codeStats, setCodeStats] = useState<CodeStats | null>(null);
   const [gitStats, setGitStats] = useState<GitStats | null>(null);
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [sessionAnalytics, setSessionAnalytics] = useState<SessionAnalytics | null>(null);
+  const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<Screenshot | null>(null);
 
   const loadAnalytics = async () => {
     setLoading(true);
     try {
-      const [code, git, screens, sessions] = await Promise.all([
+      const [code, git, screens, sessions, threadData] = await Promise.all([
         getCodeStats(project),
         getGitStats(project),
         getScreenshots(project),
         getSessionAnalytics(project),
+        getThreads(project),
       ]);
       setCodeStats(code);
       setGitStats(git);
       setScreenshots(screens);
       setSessionAnalytics(sessions);
+      setThreads(threadData);
     } catch (err) {
       console.error('Failed to load analytics:', err);
       toast.error('Failed to load analytics');
@@ -283,6 +289,118 @@ export function Analytics({ project }: AnalyticsProps) {
                 );
               })}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Session History */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2 mb-3">
+          <MessageSquare className="w-4 h-4 text-cyan-400" />
+          Session History
+        </h3>
+        {threads.length === 0 ? (
+          <p className="text-sm text-gray-500 italic">No session history found</p>
+        ) : (
+          <div className="space-y-4">
+            {threads.map((thread, i) => {
+              // Calculate duration if timestamps exist
+              let duration = '';
+              if (thread.createdAt && thread.updatedAt) {
+                const start = new Date(thread.createdAt).getTime();
+                const end = new Date(thread.updatedAt).getTime();
+                const mins = Math.round((end - start) / (1000 * 60));
+                if (mins > 0 && mins < 480) {
+                  duration = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+                }
+              }
+
+              return (
+                <div
+                  key={thread.threadId || i}
+                  className="bg-gray-750 rounded-lg p-3 border-l-4 border-cyan-500"
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <h4 className="text-sm font-medium text-white">{thread.title}</h4>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {thread.date}
+                        </span>
+                        {duration && (
+                          <span className="text-xs text-gray-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {duration}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {thread.outcome && (
+                      <span className={`px-2 py-0.5 text-xs rounded font-medium ${
+                        thread.outcome === 'success' ? 'bg-green-900/50 text-green-400' :
+                        thread.outcome === 'partial' ? 'bg-yellow-900/50 text-yellow-400' :
+                        thread.outcome === 'blocked' ? 'bg-red-900/50 text-red-400' :
+                        'bg-gray-700 text-gray-400'
+                      }`}>
+                        {thread.outcome}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Summary */}
+                  {thread.summary && (
+                    <p className="text-sm text-gray-300 mb-3 leading-relaxed">
+                      {thread.summary}
+                    </p>
+                  )}
+
+                  {/* Tasks Completed */}
+                  {thread.tasksCompleted && thread.tasksCompleted.length > 0 && (
+                    <div className="mb-2">
+                      <p className="text-xs font-medium text-green-400 flex items-center gap-1 mb-1">
+                        <ListChecks className="w-3 h-3" />
+                        {thread.tasksCompleted.length} Tasks Completed
+                      </p>
+                      <ul className="space-y-0.5 ml-4">
+                        {thread.tasksCompleted.slice(0, 5).map((task, j) => (
+                          <li key={j} className="text-xs text-gray-400 flex items-start gap-1">
+                            <CheckCircle className="w-3 h-3 text-green-500 mt-0.5 flex-shrink-0" />
+                            <span>{task}</span>
+                          </li>
+                        ))}
+                        {thread.tasksCompleted.length > 5 && (
+                          <li className="text-xs text-gray-500 ml-4">
+                            +{thread.tasksCompleted.length - 5} more tasks
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Tasks Created */}
+                  {thread.tasksCreated && thread.tasksCreated.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-blue-400 flex items-center gap-1 mb-1">
+                        <Clock className="w-3 h-3" />
+                        {thread.tasksCreated.length} Tasks Created
+                      </p>
+                      <ul className="space-y-0.5 ml-4">
+                        {thread.tasksCreated.slice(0, 3).map((task, j) => (
+                          <li key={j} className="text-xs text-gray-400">• {task}</li>
+                        ))}
+                        {thread.tasksCreated.length > 3 && (
+                          <li className="text-xs text-gray-500">
+                            +{thread.tasksCreated.length - 3} more
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
