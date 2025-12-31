@@ -402,6 +402,315 @@ fn sync_registry() -> Result<(), String> {
     Ok(())
 }
 
+// Analytics structs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeStats {
+    pub total_lines: u64,
+    pub code_lines: u64,
+    pub blank_lines: u64,
+    pub comment_lines: u64,
+    pub file_count: u64,
+    pub by_language: HashMap<String, LanguageStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanguageStats {
+    pub files: u64,
+    pub lines: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStats {
+    pub total_commits: u64,
+    pub last_commit_date: Option<String>,
+    pub first_commit_date: Option<String>,
+    pub active_days: u64,
+    pub commits_by_month: HashMap<String, u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Screenshot {
+    pub id: String,
+    pub filename: String,
+    pub path: String,
+    pub captured_at: String,
+    pub description: Option<String>,
+}
+
+// Get code statistics for a project
+#[tauri::command(rename_all = "camelCase")]
+fn get_code_stats(project_path: String) -> Result<CodeStats, String> {
+    let path = PathBuf::from(&project_path);
+
+    // Define file extensions to count
+    let extensions: Vec<(&str, &str)> = vec![
+        ("rs", "Rust"),
+        ("ts", "TypeScript"),
+        ("tsx", "TypeScript React"),
+        ("js", "JavaScript"),
+        ("jsx", "JavaScript React"),
+        ("py", "Python"),
+        ("go", "Go"),
+        ("java", "Java"),
+        ("swift", "Swift"),
+        ("kt", "Kotlin"),
+        ("css", "CSS"),
+        ("scss", "SCSS"),
+        ("html", "HTML"),
+        ("json", "JSON"),
+        ("md", "Markdown"),
+        ("sql", "SQL"),
+        ("sh", "Shell"),
+    ];
+
+    let mut stats = CodeStats {
+        total_lines: 0,
+        code_lines: 0,
+        blank_lines: 0,
+        comment_lines: 0,
+        file_count: 0,
+        by_language: HashMap::new(),
+    };
+
+    // Walk directory
+    fn count_lines_in_dir(
+        dir: &PathBuf,
+        extensions: &[(&str, &str)],
+        stats: &mut CodeStats,
+    ) -> Result<(), String> {
+        let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+
+            // Skip hidden, node_modules, target, dist, build, .git
+            if name.starts_with('.')
+                || name == "node_modules"
+                || name == "target"
+                || name == "dist"
+                || name == "build"
+                || name == ".git" {
+                continue;
+            }
+
+            if path.is_dir() {
+                count_lines_in_dir(&path, extensions, stats)?;
+            } else if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if let Some((_, lang)) = extensions.iter().find(|(e, _)| *e == ext_str) {
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let lines: Vec<&str> = content.lines().collect();
+                            let total = lines.len() as u64;
+                            let blank = lines.iter().filter(|l| l.trim().is_empty()).count() as u64;
+                            let comments = lines.iter().filter(|l| {
+                                let trimmed = l.trim();
+                                trimmed.starts_with("//")
+                                    || trimmed.starts_with("#")
+                                    || trimmed.starts_with("/*")
+                                    || trimmed.starts_with("*")
+                                    || trimmed.starts_with("<!--")
+                            }).count() as u64;
+
+                            stats.total_lines += total;
+                            stats.blank_lines += blank;
+                            stats.comment_lines += comments;
+                            stats.code_lines += total.saturating_sub(blank).saturating_sub(comments);
+                            stats.file_count += 1;
+
+                            let lang_stats = stats.by_language
+                                .entry(lang.to_string())
+                                .or_insert(LanguageStats { files: 0, lines: 0 });
+                            lang_stats.files += 1;
+                            lang_stats.lines += total;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    count_lines_in_dir(&path, &extensions, &mut stats)?;
+
+    Ok(stats)
+}
+
+// Get git statistics for a project
+#[tauri::command(rename_all = "camelCase")]
+fn get_git_stats(project_path: String) -> Result<GitStats, String> {
+    let path = PathBuf::from(&project_path);
+
+    // Check if it's a git repo
+    if !path.join(".git").exists() {
+        return Ok(GitStats {
+            total_commits: 0,
+            last_commit_date: None,
+            first_commit_date: None,
+            active_days: 0,
+            commits_by_month: HashMap::new(),
+        });
+    }
+
+    // Get total commits
+    let output = Command::new("git")
+        .args(["rev-list", "--count", "HEAD"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to count commits: {}", e))?;
+
+    let total_commits = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u64>()
+        .unwrap_or(0);
+
+    // Get commit dates for analytics
+    let output = Command::new("git")
+        .args(["log", "--format=%aI", "--date=iso"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to get commit log: {}", e))?;
+
+    let dates_str = String::from_utf8_lossy(&output.stdout);
+    let dates: Vec<&str> = dates_str.lines().collect();
+
+    let last_commit_date = dates.first().map(|s| s.to_string());
+    let first_commit_date = dates.last().map(|s| s.to_string());
+
+    // Count unique days
+    let unique_days: std::collections::HashSet<String> = dates
+        .iter()
+        .filter_map(|d| d.split('T').next())
+        .map(|s| s.to_string())
+        .collect();
+    let active_days = unique_days.len() as u64;
+
+    // Count commits by month (YYYY-MM)
+    let mut commits_by_month: HashMap<String, u64> = HashMap::new();
+    for date in &dates {
+        if let Some(month) = date.get(0..7) {
+            *commits_by_month.entry(month.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    Ok(GitStats {
+        total_commits,
+        last_commit_date,
+        first_commit_date,
+        active_days,
+        commits_by_month,
+    })
+}
+
+// Get screenshots for a project
+#[tauri::command(rename_all = "camelCase")]
+fn get_screenshots(project_path: String) -> Result<Vec<Screenshot>, String> {
+    let screenshots_dir = PathBuf::from(&project_path)
+        .join(".claude")
+        .join("screenshots");
+
+    if !screenshots_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut screenshots = vec![];
+
+    if let Ok(entries) = fs::read_dir(&screenshots_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    let ext_str = ext.to_string_lossy().to_lowercase();
+                    if ext_str == "png" || ext_str == "jpg" || ext_str == "jpeg" || ext_str == "webp" {
+                        let filename = path.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+
+                        // Get file metadata for timestamp
+                        let captured_at = fs::metadata(&path)
+                            .ok()
+                            .and_then(|m| m.modified().ok())
+                            .map(|t| {
+                                let datetime: chrono::DateTime<chrono::Utc> = t.into();
+                                datetime.to_rfc3339()
+                            })
+                            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+                        // Try to read description from .txt file with same name
+                        let desc_path = path.with_extension("txt");
+                        let description = fs::read_to_string(&desc_path).ok();
+
+                        screenshots.push(Screenshot {
+                            id: filename.clone(),
+                            filename: filename.clone(),
+                            path: path.to_string_lossy().to_string(),
+                            captured_at,
+                            description,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by captured_at descending
+    screenshots.sort_by(|a, b| b.captured_at.cmp(&a.captured_at));
+
+    Ok(screenshots)
+}
+
+// Add a screenshot (copy file to screenshots folder)
+#[tauri::command(rename_all = "camelCase")]
+fn add_screenshot(project_path: String, source_path: String, description: Option<String>) -> Result<Screenshot, String> {
+    let screenshots_dir = PathBuf::from(&project_path)
+        .join(".claude")
+        .join("screenshots");
+
+    // Create screenshots dir if it doesn't exist
+    fs::create_dir_all(&screenshots_dir)
+        .map_err(|e| format!("Failed to create screenshots directory: {}", e))?;
+
+    let source = PathBuf::from(&source_path);
+    let filename = source.file_name()
+        .ok_or("Invalid source path")?
+        .to_string_lossy()
+        .to_string();
+
+    // Add timestamp to filename to avoid conflicts
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let new_filename = if let Some(ext) = source.extension() {
+        let stem = source.file_stem().unwrap_or_default().to_string_lossy();
+        format!("{}_{}.{}", stem, timestamp, ext.to_string_lossy())
+    } else {
+        format!("{}_{}", filename, timestamp)
+    };
+
+    let dest_path = screenshots_dir.join(&new_filename);
+
+    // Copy file
+    fs::copy(&source, &dest_path)
+        .map_err(|e| format!("Failed to copy screenshot: {}", e))?;
+
+    // Write description if provided
+    if let Some(desc) = &description {
+        let desc_path = dest_path.with_extension("txt");
+        fs::write(&desc_path, desc)
+            .map_err(|e| format!("Failed to write description: {}", e))?;
+    }
+
+    Ok(Screenshot {
+        id: new_filename.clone(),
+        filename: new_filename,
+        path: dest_path.to_string_lossy().to_string(),
+        captured_at: chrono::Utc::now().to_rfc3339(),
+        description,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -424,7 +733,11 @@ pub fn run() {
             start_service,
             stop_service,
             get_activity_log,
-            sync_registry
+            sync_registry,
+            get_code_stats,
+            get_git_stats,
+            get_screenshots,
+            add_screenshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

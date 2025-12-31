@@ -89,7 +89,9 @@ export interface Thread {
   tasksCompleted: string[];
   tasksCreated: string[];
   filesModified: string[];
+  createdAt?: string;
   updatedAt?: string;
+  durationMinutes?: number; // Calculated from createdAt to updatedAt
 }
 
 // Project update payload
@@ -105,4 +107,50 @@ export interface ServiceStatus {
   projectId: string;
   port: number;
   running: boolean;
+}
+
+// Analytics types
+export interface CodeStats {
+  totalLines: number;
+  codeLines: number;
+  blankLines: number;
+  commentLines: number;
+  fileCount: number;
+  byLanguage: Record<string, { files: number; lines: number }>;
+}
+
+export interface GitStats {
+  totalCommits: number;
+  lastCommitDate: string | null;
+  firstCommitDate: string | null;
+  activeDays: number;
+  commitsByMonth: Record<string, number>;
+}
+
+export interface SessionAnalytics {
+  totalSessions: number;
+  totalTimeMinutes: number;
+  averageSessionMinutes: number;
+  sessionsThisWeek: number;
+  sessionsThisMonth: number;
+  longestSessionMinutes: number;
+  lastSessionDate: string | null;
+  outcomeDistribution: Record<string, number>;
+}
+
+export interface ProjectAnalytics {
+  projectId: string;
+  codeStats: CodeStats;
+  gitStats: GitStats;
+  sessionAnalytics: SessionAnalytics;
+  screenshots: Screenshot[];
+  lastUpdated: string;
+}
+
+export interface Screenshot {
+  id: string;
+  filename: string;
+  path: string;
+  capturedAt: string;
+  description?: string;
 }

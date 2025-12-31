@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { ClaudeProject, DashboardStats, LaunchType, Thread, ProjectUpdate } from '../types';
+import type { ClaudeProject, DashboardStats, LaunchType, Thread, ProjectUpdate, CodeStats, GitStats, Screenshot, SessionAnalytics } from '../types';
 import { detectLaunchCapabilities } from '../utils/launchDetection';
 
 interface ProjectStore {
@@ -27,6 +27,13 @@ interface ProjectStore {
   startAllServices: () => Promise<void>;
   stopAllServices: () => Promise<void>;
   syncRegistry: () => Promise<void>;
+
+  // Analytics actions
+  getCodeStats: (project: ClaudeProject) => Promise<CodeStats>;
+  getGitStats: (project: ClaudeProject) => Promise<GitStats>;
+  getScreenshots: (project: ClaudeProject) => Promise<Screenshot[]>;
+  addScreenshot: (project: ClaudeProject, sourcePath: string, description?: string) => Promise<Screenshot>;
+  getSessionAnalytics: (project: ClaudeProject) => Promise<SessionAnalytics>;
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -250,5 +257,105 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     } catch (err) {
       console.error('Failed to sync registry:', err);
     }
+  },
+
+  getCodeStats: async (project) => {
+    try {
+      return await invoke<CodeStats>('get_code_stats', { projectPath: project.path });
+    } catch (err) {
+      console.error('Failed to get code stats:', err);
+      return {
+        totalLines: 0,
+        codeLines: 0,
+        blankLines: 0,
+        commentLines: 0,
+        fileCount: 0,
+        byLanguage: {},
+      };
+    }
+  },
+
+  getGitStats: async (project) => {
+    try {
+      return await invoke<GitStats>('get_git_stats', { projectPath: project.path });
+    } catch (err) {
+      console.error('Failed to get git stats:', err);
+      return {
+        totalCommits: 0,
+        lastCommitDate: null,
+        firstCommitDate: null,
+        activeDays: 0,
+        commitsByMonth: {},
+      };
+    }
+  },
+
+  getScreenshots: async (project) => {
+    try {
+      return await invoke<Screenshot[]>('get_screenshots', { projectPath: project.path });
+    } catch (err) {
+      console.error('Failed to get screenshots:', err);
+      return [];
+    }
+  },
+
+  addScreenshot: async (project, sourcePath, description) => {
+    try {
+      return await invoke<Screenshot>('add_screenshot', {
+        projectPath: project.path,
+        sourcePath,
+        description,
+      });
+    } catch (err) {
+      console.error('Failed to add screenshot:', err);
+      throw err;
+    }
+  },
+
+  getSessionAnalytics: async (project) => {
+    const threads = await get().getThreads(project);
+
+    // Calculate session analytics from threads
+    const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let totalTimeMinutes = 0;
+    let longestSessionMinutes = 0;
+    const outcomeDistribution: Record<string, number> = {};
+
+    threads.forEach(thread => {
+      // Calculate duration if we have timestamps
+      if (thread.createdAt && thread.updatedAt) {
+        const start = new Date(thread.createdAt).getTime();
+        const end = new Date(thread.updatedAt).getTime();
+        const durationMinutes = Math.round((end - start) / (1000 * 60));
+        if (durationMinutes > 0 && durationMinutes < 480) { // Cap at 8 hours
+          totalTimeMinutes += durationMinutes;
+          if (durationMinutes > longestSessionMinutes) {
+            longestSessionMinutes = durationMinutes;
+          }
+        }
+      }
+
+      // Count outcomes
+      if (thread.outcome) {
+        outcomeDistribution[thread.outcome] = (outcomeDistribution[thread.outcome] || 0) + 1;
+      }
+    });
+
+    const sessionsThisWeek = threads.filter(t => new Date(t.date) >= oneWeekAgo).length;
+    const sessionsThisMonth = threads.filter(t => new Date(t.date) >= oneMonthAgo).length;
+
+    return {
+      totalSessions: threads.length,
+      totalTimeMinutes,
+      averageSessionMinutes: threads.length > 0 ? Math.round(totalTimeMinutes / threads.length) : 0,
+      sessionsThisWeek,
+      sessionsThisMonth,
+      longestSessionMinutes,
+      lastSessionDate: threads.length > 0 ? threads[0].date : null,
+      outcomeDistribution,
+    };
   },
 }));
