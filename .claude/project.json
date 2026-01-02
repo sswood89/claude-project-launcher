@@ -55,7 +55,7 @@
   "blockers": [],
   "notes": "Desktop app built with Tauri 2 + React + TypeScript. Key fix: Tauri 2 requires #[tauri::command(rename_all = \"camelCase\")] for commands with parameters to properly map JS camelCase to Rust snake_case.",
   "links": {
-    "repo": "",
+    "repo": "https://github.com/sswood89/claude-project-launcher",
     "docs": "",
     "deployment": "",
     "figma": ""
