@@ -32,11 +32,11 @@ export function ProjectProgressList({ projects, onSelectProject }: ProjectProgre
             <div className="w-full bg-gray-700 rounded-full h-1.5">
               <div
                 className={`h-1.5 rounded-full transition-all duration-500 ${
-                  progress === 100
+                  progress >= 75
                     ? 'bg-green-500'
-                    : progress >= 50
+                    : progress >= 40
                     ? 'bg-blue-500'
-                    : 'bg-yellow-500'
+                    : 'bg-orange-500'
                 }`}
                 style={{ width: `${progress}%` }}
               />

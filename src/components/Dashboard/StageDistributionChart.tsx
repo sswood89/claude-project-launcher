@@ -3,6 +3,7 @@ import { getStageColor } from '../../utils/launchDetection';
 
 interface StageDistributionChartProps {
   distribution: Record<string, number>;
+  onStageClick?: (stage: string) => void;
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -15,12 +16,19 @@ const STAGE_LABELS: Record<string, string> = {
   deployed: 'Deployed',
 };
 
-export function StageDistributionChart({ distribution }: StageDistributionChartProps) {
+export function StageDistributionChart({ distribution, onStageClick }: StageDistributionChartProps) {
   const data = Object.entries(distribution).map(([stage, count]) => ({
     name: STAGE_LABELS[stage] || stage,
+    stage,
     value: count,
     color: getStageColor(stage),
   }));
+
+  const handlePieClick = (entry: { stage: string }) => {
+    if (onStageClick) {
+      onStageClick(entry.stage);
+    }
+  };
 
   if (data.length === 0) {
     return (
@@ -42,9 +50,15 @@ export function StageDistributionChart({ distribution }: StageDistributionChartP
             outerRadius={60}
             paddingAngle={2}
             dataKey="value"
+            onClick={handlePieClick}
+            style={{ cursor: onStageClick ? 'pointer' : 'default' }}
           >
             {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
+              <Cell
+                key={`cell-${index}`}
+                fill={entry.color}
+                className={onStageClick ? 'hover:opacity-80 transition-opacity' : ''}
+              />
             ))}
           </Pie>
           <Tooltip

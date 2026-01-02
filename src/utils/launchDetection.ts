@@ -65,18 +65,18 @@ export function getPriorityColor(priority: string): string {
 export function getStageColor(stage: string): string {
   switch (stage) {
     case 'planning':
-      return '#8b5cf6'; // purple
+      return '#f97316'; // orange-500
     case 'design':
-      return '#ec4899'; // pink
+      return '#fb923c'; // orange-400
     case 'development':
-      return '#3b82f6'; // blue
+      return '#3b82f6'; // blue-500
     case 'testing':
-      return '#f59e0b'; // amber
+      return '#60a5fa'; // blue-400
     case 'deployment':
-      return '#10b981'; // emerald
+      return '#f97316'; // orange-500
     case 'maintenance':
     case 'deployed':
-      return '#22c55e'; // green
+      return '#22c55e'; // green-500
     default:
       return '#6b7280'; // gray
   }
