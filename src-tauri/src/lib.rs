@@ -135,6 +135,52 @@ pub struct ProjectUpdate {
     pub progress: Option<u32>,
 }
 
+// Config file structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Config {
+    pub version: String,
+    #[serde(rename = "projectPaths")]
+    pub project_paths: Vec<String>,
+    pub settings: ConfigSettings,
+    #[serde(rename = "projectOrder", default)]
+    pub project_order: Option<ProjectOrder>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigSettings {
+    #[serde(rename = "autoSyncOnSessionEnd")]
+    pub auto_sync_on_session_end: bool,
+    #[serde(rename = "defaultPriority")]
+    pub default_priority: String,
+    #[serde(rename = "dateFormat")]
+    pub date_format: String,
+}
+
+// Project ordering by status
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProjectOrder {
+    #[serde(default)]
+    pub backlog: Vec<String>,
+    #[serde(rename = "in-progress", default)]
+    pub in_progress: Vec<String>,
+    #[serde(default)]
+    pub active: Vec<String>,
+    #[serde(default)]
+    pub live: Vec<String>,
+    #[serde(default)]
+    pub paused: Vec<String>,
+    #[serde(default)]
+    pub onhold: Vec<String>,
+    #[serde(default)]
+    pub completed: Vec<String>,
+    #[serde(default)]
+    pub cancelled: Vec<String>,
+    #[serde(default)]
+    pub archived: Vec<String>,
+}
+
 fn get_home_dir() -> PathBuf {
     directories::UserDirs::new()
         .map(|dirs| dirs.home_dir().to_path_buf())
@@ -148,16 +194,51 @@ fn get_registry_path() -> PathBuf {
     home.join(".claude-projects").join("registry.json")
 }
 
+fn get_config_path() -> PathBuf {
+    let home = directories::UserDirs::new()
+        .map(|dirs| dirs.home_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/Users/shaka"));
+    home.join(".claude-projects").join("config.json")
+}
+
+fn read_config() -> Result<Config, String> {
+    let config_path = get_config_path();
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config.json: {}", e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse config.json: {}", e))
+}
+
+fn write_config(config: &Config) -> Result<(), String> {
+    let config_path = get_config_path();
+    let content = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    fs::write(&config_path, content)
+        .map_err(|e| format!("Failed to write config.json: {}", e))
+}
+
 #[tauri::command]
 fn get_projects() -> Result<Vec<ClaudeProject>, String> {
     let registry_path = get_registry_path();
+    println!("[DEBUG] Reading registry from: {:?}", registry_path);
 
     let content = fs::read_to_string(&registry_path)
-        .map_err(|e| format!("Failed to read registry.json: {}", e))?;
+        .map_err(|e| {
+            let err = format!("Failed to read registry.json at {:?}: {}", registry_path, e);
+            println!("[ERROR] {}", err);
+            err
+        })?;
+
+    println!("[DEBUG] Registry content length: {} bytes", content.len());
 
     let registry: Registry = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse registry.json: {}", e))?;
+        .map_err(|e| {
+            let err = format!("Failed to parse registry.json: {}", e);
+            println!("[ERROR] {}", err);
+            err
+        })?;
 
+    println!("[DEBUG] Parsed {} projects", registry.projects.len());
     Ok(registry.projects)
 }
 
@@ -399,6 +480,23 @@ fn sync_registry() -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("Failed to sync registry: {}", e))?;
 
+    Ok(())
+}
+
+// Get project order from config
+#[tauri::command]
+fn get_project_order() -> Result<ProjectOrder, String> {
+    let config = read_config()?;
+    Ok(config.project_order.unwrap_or_default())
+}
+
+// Update project order in config
+#[tauri::command]
+fn update_project_order(order: ProjectOrder) -> Result<(), String> {
+    let mut config = read_config()?;
+    config.project_order = Some(order);
+    write_config(&config)?;
+    println!("[DEBUG] Updated project order in config.json");
     Ok(())
 }
 
@@ -734,6 +832,8 @@ pub fn run() {
             stop_service,
             get_activity_log,
             sync_registry,
+            get_project_order,
+            update_project_order,
             get_code_stats,
             get_git_stats,
             get_screenshots,

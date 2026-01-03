@@ -37,11 +37,17 @@ export function getStatusColor(status: string): string {
       return 'yellow';
     case 'active':
       return 'green';
+    case 'live':
+      return 'emerald';
     case 'paused':
       return 'orange';
+    case 'onhold':
+      return 'amber';
     case 'completed':
     case 'complete':
       return 'emerald';
+    case 'cancelled':
+      return 'red';
     case 'archived':
       return 'gray';
     default:

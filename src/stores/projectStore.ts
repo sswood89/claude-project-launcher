@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { ClaudeProject, DashboardStats, LaunchType, Thread, ProjectUpdate, CodeStats, GitStats, Screenshot, SessionAnalytics } from '../types';
+import type { ClaudeProject, DashboardStats, LaunchType, Thread, ProjectUpdate, CodeStats, GitStats, Screenshot, SessionAnalytics, ViewMode, StatusFilter, ProjectOrder, ProjectStatus } from '../types';
 import { detectLaunchCapabilities } from '../utils/launchDetection';
 
 interface ProjectStore {
@@ -11,11 +11,25 @@ interface ProjectStore {
   serviceStatuses: Map<string, boolean>;
   threads: Map<string, Thread[]>;
 
+  // View and filter state
+  viewMode: ViewMode;
+  statusFilter: StatusFilter;
+  selectedStatuses: ProjectStatus[];
+  projectOrder: ProjectOrder | null;
+
   // Actions
   fetchProjects: () => Promise<void>;
   selectProject: (id: string | null) => void;
   getDashboardStats: () => DashboardStats;
   launchProject: (project: ClaudeProject, type: LaunchType) => Promise<void>;
+
+  // View and filter actions
+  setViewMode: (mode: ViewMode) => void;
+  setStatusFilter: (filter: StatusFilter) => void;
+  toggleStatus: (status: ProjectStatus) => void;
+  getFilteredProjects: () => ClaudeProject[];
+  fetchProjectOrder: () => Promise<void>;
+  updateProjectOrder: (order: ProjectOrder) => Promise<void>;
 
   // New actions
   getThreads: (project: ClaudeProject) => Promise<Thread[]>;
@@ -36,13 +50,117 @@ interface ProjectStore {
   getSessionAnalytics: (project: ClaudeProject) => Promise<SessionAnalytics>;
 }
 
-export const useProjectStore = create<ProjectStore>((set, get) => ({
+// Default statuses (all except archived)
+const DEFAULT_SELECTED_STATUSES: ProjectStatus[] = ['backlog', 'in-progress', 'active', 'live', 'paused', 'onhold', 'completed', 'cancelled'];
+
+// Helper to get persisted preferences from localStorage
+const getPersistedPreferences = () => {
+  try {
+    const stored = localStorage.getItem('project-tracker-preferences');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return {
+        viewMode: parsed.viewMode || 'card',
+        statusFilter: parsed.statusFilter || 'hide-archived',
+        selectedStatuses: parsed.selectedStatuses || DEFAULT_SELECTED_STATUSES,
+      };
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return {
+    viewMode: 'card' as ViewMode,
+    statusFilter: 'hide-archived' as StatusFilter,
+    selectedStatuses: DEFAULT_SELECTED_STATUSES,
+  };
+};
+
+const persistPreferences = (viewMode: ViewMode, statusFilter: StatusFilter, selectedStatuses: ProjectStatus[]) => {
+  try {
+    localStorage.setItem('project-tracker-preferences', JSON.stringify({ viewMode, statusFilter, selectedStatuses }));
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+export const useProjectStore = create<ProjectStore>((set, get) => {
+  const initialPrefs = getPersistedPreferences();
+
+  return {
   projects: [],
   loading: false,
   error: null,
   selectedProjectId: null,
   serviceStatuses: new Map(),
   threads: new Map(),
+  viewMode: initialPrefs.viewMode,
+  statusFilter: initialPrefs.statusFilter,
+  selectedStatuses: initialPrefs.selectedStatuses,
+  projectOrder: null,
+
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
+    persistPreferences(mode, get().statusFilter, get().selectedStatuses);
+  },
+
+  setStatusFilter: (filter) => {
+    // If setting to an array (custom filter), also update selectedStatuses
+    if (Array.isArray(filter)) {
+      set({ statusFilter: filter, selectedStatuses: filter });
+      persistPreferences(get().viewMode, filter, filter);
+    } else {
+      set({ statusFilter: filter });
+      persistPreferences(get().viewMode, filter, get().selectedStatuses);
+    }
+  },
+
+  toggleStatus: (status) => {
+    const { selectedStatuses, viewMode } = get();
+    const newStatuses = selectedStatuses.includes(status)
+      ? selectedStatuses.filter(s => s !== status)
+      : [...selectedStatuses, status];
+    set({ selectedStatuses: newStatuses, statusFilter: newStatuses });
+    persistPreferences(viewMode, newStatuses, newStatuses);
+  },
+
+  getFilteredProjects: () => {
+    const { projects, statusFilter } = get();
+
+    // If statusFilter is an array, use it directly for custom filtering
+    if (Array.isArray(statusFilter)) {
+      return projects.filter(p => statusFilter.includes(p.status as ProjectStatus));
+    }
+
+    // Otherwise use preset filters
+    switch (statusFilter) {
+      case 'hide-archived':
+        return projects.filter(p => p.status !== 'archived');
+      case 'active-only':
+        return projects.filter(p => ['in-progress', 'active', 'live'].includes(p.status));
+      case 'all':
+      default:
+        return projects;
+    }
+  },
+
+  fetchProjectOrder: async () => {
+    try {
+      const order = await invoke<ProjectOrder>('get_project_order');
+      set({ projectOrder: order });
+    } catch (err) {
+      console.error('Failed to fetch project order:', err);
+    }
+  },
+
+  updateProjectOrder: async (order) => {
+    try {
+      await invoke('update_project_order', { order });
+      set({ projectOrder: order });
+    } catch (err) {
+      console.error('Failed to update project order:', err);
+      throw err;
+    }
+  },
 
   fetchProjects: async () => {
     set({ loading: true, error: null });
@@ -358,4 +476,4 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       outcomeDistribution,
     };
   },
-}));
+}});

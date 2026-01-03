@@ -12,9 +12,12 @@ const statusLabels: Record<string, string> = {
   'backlog': 'Backlog',
   'in-progress': 'In Progress',
   'active': 'Active',
+  'live': 'Live',
   'paused': 'Paused',
+  'onhold': 'On Hold',
   'completed': 'Completed',
   'complete': 'Complete',
+  'cancelled': 'Cancelled',
   'archived': 'Archived',
 };
 

@@ -1,6 +1,6 @@
 // Match the registry.json schema
 
-export type ProjectStatus = 'backlog' | 'in-progress' | 'active' | 'paused' | 'completed' | 'complete' | 'archived';
+export type ProjectStatus = 'backlog' | 'in-progress' | 'active' | 'paused' | 'completed' | 'complete' | 'archived' | 'onhold' | 'cancelled' | 'live';
 export type Priority = 'high' | 'medium' | 'low';
 export type PipelineStage = 'planning' | 'design' | 'development' | 'testing' | 'deployment' | 'maintenance' | 'deployed';
 export type PhaseStatus = 'pending' | 'in-progress' | 'done' | 'blocked';
@@ -153,4 +153,35 @@ export interface Screenshot {
   path: string;
   capturedAt: string;
   description?: string;
+}
+
+// View and Filter Types (shared across Next.js and Tauri apps)
+export type ViewMode = 'card' | 'list';
+
+// All available project statuses for filtering
+export const ALL_STATUSES: ProjectStatus[] = ['backlog', 'in-progress', 'active', 'live', 'paused', 'onhold', 'completed', 'cancelled', 'archived'];
+
+// Status filter can be preset options OR an array of specific statuses
+export type StatusFilter = 'all' | 'hide-archived' | 'active-only' | ProjectStatus[];
+
+export interface ProjectOrder {
+  'backlog': string[];
+  'in-progress': string[];
+  'active': string[];
+  'live': string[];
+  'paused': string[];
+  'onhold': string[];
+  'completed': string[];
+  'cancelled': string[];
+  'archived': string[];
+}
+
+export interface FilterState {
+  statusFilter: StatusFilter;
+  selectedStatuses: ProjectStatus[]; // For granular status filtering
+}
+
+export interface UserPreferences {
+  viewMode: ViewMode;
+  statusFilter: StatusFilter;
 }

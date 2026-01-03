@@ -8,7 +8,20 @@ interface ProjectEditorProps {
   project: ClaudeProject;
 }
 
-const STATUS_OPTIONS: ProjectStatus[] = ['backlog', 'in-progress', 'active', 'paused', 'completed', 'archived'];
+const STATUS_OPTIONS: ProjectStatus[] = ['backlog', 'in-progress', 'active', 'live', 'paused', 'onhold', 'completed', 'cancelled', 'archived'];
+
+const STATUS_LABELS: Record<ProjectStatus, string> = {
+  'backlog': 'Backlog',
+  'in-progress': 'In Progress',
+  'active': 'Active',
+  'live': 'Live',
+  'paused': 'Paused',
+  'onhold': 'On Hold',
+  'completed': 'Completed',
+  'complete': 'Complete',
+  'cancelled': 'Cancelled',
+  'archived': 'Archived',
+};
 
 export function ProjectEditor({ project }: ProjectEditorProps) {
   const { updateProject } = useProjectStore();
@@ -81,7 +94,7 @@ export function ProjectEditor({ project }: ProjectEditorProps) {
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
-                {s.charAt(0).toUpperCase() + s.slice(1).replace('-', ' ')}
+                {STATUS_LABELS[s] || s}
               </option>
             ))}
           </select>
